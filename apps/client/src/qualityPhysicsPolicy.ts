@@ -9,6 +9,7 @@ import {
   Vector3,
 } from "@babylonjs/core";
 import type { GameApp } from "./GameApp";
+import { ui } from "./ui";
 
 type CanState = "falling" | "settled" | "stomping" | "carried";
 
@@ -87,6 +88,7 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
 
     runtime.engine?.setHardwareScalingLevel(1 / targetPixelRatio);
     runtime.engine?.resize(true);
+    ui.setQualityTier(mobileLike ? "BALANCED" : "HIGH");
 
     if (runtime.camera && runtime.scene) {
       runtime.qualityFxaa?.dispose();

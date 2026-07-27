@@ -3,6 +3,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { Type } from "@sinclair/typebox";
+import { strFromU8, unzipSync } from "fflate";
 import type {
   BrandId,
   BusinessMode,
@@ -16,23 +17,12 @@ import type {
 } from "@can-rat/shared";
 import { PlayerStore } from "./store.js";
 
-const app = Fastify({
-  logger: true,
-  bodyLimit: 16 * 1024,
-});
-
+const app = Fastify({ logger: true, bodyLimit: 16 * 1024 });
 const store = new PlayerStore();
 await store.load();
 
-await app.register(cors, {
-  origin: true,
-  credentials: false,
-});
-
-await app.register(rateLimit, {
-  max: 180,
-  timeWindow: "1 minute",
-});
+await app.register(cors, { origin: true, credentials: false });
+await app.register(rateLimit, { max: 180, timeWindow: "1 minute" });
 
 const brandMultipliers: Record<BrandId, number> = {
   malt: 0.92,
@@ -41,7 +31,6 @@ const brandMultipliers: Record<BrandId, number> = {
   orbit: 2.18,
 };
 
-const RAT_DAE_URL = "https://opengameart.org/sites/default/files/rat.dae";
 const RAT_ARCHIVE_URL = "https://opengameart.org/sites/default/files/rat_godot.zip";
 const TRANSPARENT_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z9t8AAAAASUVORK5CYII=";
 let ratDaeCache: string | undefined;
@@ -59,16 +48,12 @@ function publicState(player: PlayerState): PlayerState {
 
 async function fetchRatDae(): Promise<string> {
   if (ratDaeCache) return ratDaeCache;
-
-  // The public asset page distributes a Godot ZIP. The direct DAE endpoint is
-  // available on the same CDN; when a mirror blocks it, derive the DAE from the
-  // archive is intentionally left to deployment asset preparation rather than
-  // introducing a ZIP parser into the game server.
-  const response = await fetch(RAT_DAE_URL, { redirect: "follow" });
-  if (!response.ok) {
-    throw new Error(`Rat asset unavailable (${response.status}); source archive: ${RAT_ARCHIVE_URL}`);
-  }
-  const dae = await response.text();
+  const response = await fetch(RAT_ARCHIVE_URL, { redirect: "follow" });
+  if (!response.ok) throw new Error(`Rat asset archive unavailable (${response.status})`);
+  const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
+  const source = archive["rat.dae"];
+  if (!source) throw new Error("Rat asset archive does not contain rat.dae");
+  const dae = strFromU8(source);
   ratDaeCache = dae.replace(/<init_from>rat\.png<\/init_from>/g, `<init_from>${TRANSPARENT_PIXEL}</init_from>`);
   return ratDaeCache;
 }
@@ -94,18 +79,13 @@ app.get("/api/session", async (request: FastifyRequest) => {
   return state;
 });
 
-app.post<{
-  Body: DeliverRequest;
-}>(
+app.post<{ Body: DeliverRequest }>(
   "/api/deliver",
   {
     schema: {
       body: Type.Object({
         brandId: Type.Union([
-          Type.Literal("malt"),
-          Type.Literal("fizz"),
-          Type.Literal("nova"),
-          Type.Literal("orbit"),
+          Type.Literal("malt"), Type.Literal("fizz"), Type.Literal("nova"), Type.Literal("orbit"),
         ]),
         brandMultiplier: Type.Number({ minimum: 0.8, maximum: 2.4 }),
         stompMultiplier: Type.Number({ minimum: 0.6, maximum: 1.9 }),
@@ -117,23 +97,19 @@ app.post<{
     const playerId = playerIdFrom(request.headers as Record<string, unknown>);
     const player = store.get(playerId);
     store.resolveProcessing(player);
-
     if (store.isConsumed(playerId, request.body.eventId)) {
       reply.code(409);
       throw new Error("Duplicate delivery event.");
     }
-
     const expectedBrand = brandMultipliers[request.body.brandId];
     if (Math.abs(expectedBrand - request.body.brandMultiplier) > 0.001) {
       reply.code(400);
       throw new Error("Invalid brand multiplier.");
     }
-
     const stomp = Math.min(1.82, Math.max(0.66, request.body.stompMultiplier));
     const quality = Number((expectedBrand * stomp).toFixed(4));
     let revenue = 0;
     let queued = false;
-
     if (player.mode === "direct") {
       const brokerMultiplier = 1 + player.roster.broker * 0.12;
       revenue = Math.max(1, Math.round(12 * quality * brokerMultiplier));
@@ -141,24 +117,13 @@ app.post<{
       player.lifetimeRevenue += revenue;
     } else {
       queued = true;
-      player.processing.push({
-        id: randomUUID(),
-        quality,
-        readyAt: Date.now() + store.processingDuration(player),
-      });
+      player.processing.push({ id: randomUUID(), quality, readyAt: Date.now() + store.processingDuration(player) });
     }
-
     player.delivered += 1;
     player.updatedAt = Date.now();
     store.consume(playerId, request.body.eventId);
     await store.persist();
-
-    return {
-      state: publicState(player),
-      acceptedQuality: quality,
-      revenue,
-      queued,
-    };
+    return { state: publicState(player), acceptedQuality: quality, revenue, queued };
   },
 );
 
@@ -168,10 +133,7 @@ app.post<{ Body: HireRequest }>(
     schema: {
       body: Type.Object({
         type: Type.Union([
-          Type.Literal("runner"),
-          Type.Literal("hauler"),
-          Type.Literal("broker"),
-          Type.Literal("engineer"),
+          Type.Literal("runner"), Type.Literal("hauler"), Type.Literal("broker"), Type.Literal("engineer"),
         ]),
       }),
     },
@@ -180,34 +142,24 @@ app.post<{ Body: HireRequest }>(
     const playerId = playerIdFrom(request.headers as Record<string, unknown>);
     const player = store.get(playerId);
     store.resolveProcessing(player);
-
     const type = request.body.type as RatType;
     const cost = store.hireCost(player, type);
     if (player.cash < cost) {
       reply.code(400);
       throw new Error("Insufficient cash.");
     }
-
     player.cash -= cost;
     player.roster[type] += 1;
     player.updatedAt = Date.now();
     await store.persist();
-
-    return {
-      state: publicState(player),
-      cost,
-    };
+    return { state: publicState(player), cost };
   },
 );
 
 app.post<{ Body: ModeRequest }>(
   "/api/mode",
   {
-    schema: {
-      body: Type.Object({
-        mode: Type.Union([Type.Literal("direct"), Type.Literal("process")]),
-      }),
-    },
+    schema: { body: Type.Object({ mode: Type.Union([Type.Literal("direct"), Type.Literal("process")]) }) },
   },
   async (request: FastifyRequest<{ Body: ModeRequest }>): Promise<PlayerState> => {
     const playerId = playerIdFrom(request.headers as Record<string, unknown>);
@@ -222,9 +174,7 @@ app.post<{ Body: ModeRequest }>(
 
 app.setErrorHandler((error: Error, _request: FastifyRequest, reply: FastifyReply) => {
   const statusCode = reply.statusCode >= 400 ? reply.statusCode : 500;
-  reply.code(statusCode).send({
-    error: statusCode >= 500 ? "Internal server error." : error.message,
-  });
+  reply.code(statusCode).send({ error: statusCode >= 500 ? "Internal server error." : error.message });
 });
 
 const port = Number(process.env.PORT ?? 8787);

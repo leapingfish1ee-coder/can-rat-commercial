@@ -3,6 +3,18 @@ import { mkdir, writeFile } from 'node:fs/promises';
 
 await mkdir('screenshots', { recursive: true });
 
+// Asset acquisition pass: OpenGameArt hosts a tiny animated CC0 rat model.
+// Keep the downloaded archive in the CI artifact so it can be inspected and
+// vendored into the repository instead of relying on a third-party runtime URL.
+try {
+  const assetResponse = await fetch('https://opengameart.org/sites/default/files/rat_godot.zip');
+  if (!assetResponse.ok) throw new Error(`HTTP ${assetResponse.status}`);
+  await writeFile('screenshots/rat_godot.zip', Buffer.from(await assetResponse.arrayBuffer()));
+  console.log('[asset] downloaded CC0 rat_godot.zip');
+} catch (error) {
+  console.warn('[asset] rat download failed:', error instanceof Error ? error.message : String(error));
+}
+
 const browser = await chromium.launch({
   headless: true,
   args: [

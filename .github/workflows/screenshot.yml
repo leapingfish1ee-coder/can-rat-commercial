@@ -1,0 +1,51 @@
+name: Build and Screenshot
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm install --include=dev
+      - name: Build project
+        run: npm run build
+      - name: Install Playwright Chromium
+        run: |
+          npm install --no-save playwright@1.54.1
+          npx playwright install --with-deps chromium
+      - name: Start application
+        run: |
+          npm run dev > app.log 2>&1 &
+          echo $! > app.pid
+          for i in {1..90}; do
+            if curl -fsS http://127.0.0.1:5173 >/dev/null && curl -fsS http://127.0.0.1:8787/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat app.log
+          exit 1
+      - name: Capture screenshots
+        run: node scripts/capture.mjs
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: can-rat-screenshots
+          path: |
+            screenshots/
+            app.log
+          if-no-files-found: warn

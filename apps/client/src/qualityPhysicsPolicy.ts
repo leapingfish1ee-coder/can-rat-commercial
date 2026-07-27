@@ -21,6 +21,12 @@ interface RuntimeCan {
   settledAt: number;
 }
 
+interface PhysicsDiagnostics {
+  settled: number;
+  nonUpright: number;
+  axisYSamples: number[];
+}
+
 interface GameRuntime {
   configureRendering: () => void;
   edges: (mesh: AbstractMesh, width?: number, alpha?: number) => void;
@@ -31,6 +37,7 @@ interface GameRuntime {
   camera?: ArcRotateCamera;
   cans: RuntimeCan[];
   qualityFxaa?: FxaaPostProcess;
+  qualityPhysicsDiagnostics?: PhysicsDiagnostics;
 }
 
 const FIELD_X = 6.25;
@@ -42,10 +49,14 @@ const FLOOR_PADDING = 0.028;
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
 
-function supportHeight(rotation: Quaternion): number {
+function verticalAxisMagnitude(rotation: Quaternion): number {
   const normalized = rotation.clone();
   normalized.normalize();
-  const axisY = Math.abs(1 - 2 * (normalized.x * normalized.x + normalized.z * normalized.z));
+  return Math.abs(1 - 2 * (normalized.x * normalized.x + normalized.z * normalized.z));
+}
+
+function supportHeight(rotation: Quaternion): number {
+  const axisY = verticalAxisMagnitude(rotation);
   const radialContribution = Math.sqrt(Math.max(0, 1 - axisY * axisY)) * CAN_RADIUS;
   return FLOOR_PADDING + axisY * CAN_HALF_HEIGHT + radialContribution;
 }
@@ -56,6 +67,11 @@ function supportHeight(rotation: Quaternion): number {
  */
 export function installQualityPhysicsPolicy(app: GameApp): void {
   const runtime = app as unknown as GameRuntime;
+  runtime.qualityPhysicsDiagnostics = {
+    settled: 0,
+    nonUpright: 0,
+    axisYSamples: [],
+  };
 
   const configureRendering = runtime.configureRendering.bind(runtime);
   runtime.configureRendering = (): void => {
@@ -67,8 +83,6 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
       ? Math.min(deviceRatio, 1.35)
       : Math.min(deviceRatio, 2);
 
-    // Babylon render size is client size divided by hardwareScalingLevel.
-    // Reciprocal DPR therefore produces a native-density Retina back buffer.
     runtime.engine?.setHardwareScalingLevel(1 / targetPixelRatio);
     runtime.engine?.resize(true);
 
@@ -123,6 +137,15 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
         can.root.position.y = supportHeight(can.root.rotationQuaternion) + 0.002;
         can.state = "settled";
         can.settledAt = performance.now();
+
+        const axisY = verticalAxisMagnitude(can.root.rotationQuaternion);
+        const diagnostics = runtime.qualityPhysicsDiagnostics;
+        if (diagnostics) {
+          diagnostics.settled += 1;
+          if (axisY < 0.9) diagnostics.nonUpright += 1;
+          diagnostics.axisYSamples.push(Number(axisY.toFixed(4)));
+          if (diagnostics.axisYSamples.length > 20) diagnostics.axisYSamples.shift();
+        }
         continue;
       }
 

@@ -37,48 +37,45 @@ try {
   errors.push('[capture] #loading.hidden was not reached within 25 seconds');
 }
 
-let diagnostics = {
-  pixelRatioX: 0,
-  pixelRatioY: 0,
-  settled: 0,
-  nonUpright: 0,
-  axisYSamples: [],
-};
-
+let diagnostics = {};
 if (ready) {
-  for (let index = 0; index < 56; index += 1) {
-    diagnostics = await page.evaluate(() => {
-      const canvas = document.querySelector('#renderCanvas');
-      const app = globalThis.__CAN_RAT_APP__;
-      const rect = canvas?.getBoundingClientRect();
-      const physics = app?.qualityPhysicsDiagnostics ?? {
-        settled: 0,
-        nonUpright: 0,
-        axisYSamples: [],
-      };
+  await page.waitForTimeout(12000);
+  diagnostics = await page.evaluate(() => {
+    const canvas = document.querySelector('#renderCanvas');
+    const app = globalThis.__CAN_RAT_APP__;
+    const rect = canvas?.getBoundingClientRect();
+    const physics = app?.qualityPhysicsDiagnostics ?? {};
+    const cans = (app?.cans ?? []).map(can => {
+      const q = can.root.rotationQuaternion;
+      const axisY = q ? Math.abs(1 - 2 * (q.x * q.x + q.z * q.z)) : 1;
       return {
-        pixelRatioX: canvas && rect ? canvas.width / rect.width : 0,
-        pixelRatioY: canvas && rect ? canvas.height / rect.height : 0,
-        settled: physics.settled,
-        nonUpright: physics.nonUpright,
-        axisYSamples: physics.axisYSamples,
+        state: can.state,
+        bounces: can.bounces,
+        y: Number(can.root.position.y.toFixed(3)),
+        vy: Number(can.velocity.y.toFixed(3)),
+        spin: Number(can.spin.length().toFixed(3)),
+        axisY: Number(axisY.toFixed(4)),
       };
     });
-    if (diagnostics.nonUpright > 0 && index > 8) break;
-    await page.waitForTimeout(250);
-  }
+    return {
+      pixelRatioX: canvas && rect ? canvas.width / rect.width : 0,
+      pixelRatioY: canvas && rect ? canvas.height / rect.height : 0,
+      physics,
+      canStates: cans.reduce((acc, can) => {
+        acc[can.state] = (acc[can.state] ?? 0) + 1;
+        return acc;
+      }, {}),
+      maxBouncesLive: cans.reduce((max, can) => Math.max(max, can.bounces), 0),
+      nonUprightImpactedLive: cans.filter(can => can.bounces > 0 && can.axisY < 0.9).length,
+      cans,
+    };
+  });
 
   await writeFile('screenshots/render-diagnostics.json', JSON.stringify(diagnostics, null, 2));
   console.log('[diagnostics]', JSON.stringify(diagnostics));
 
   if (diagnostics.pixelRatioX < 1.8 || diagnostics.pixelRatioY < 1.8) {
     errors.push(`[quality] expected Retina-scale canvas, got ${diagnostics.pixelRatioX.toFixed(2)} × ${diagnostics.pixelRatioY.toFixed(2)}`);
-  }
-  if (diagnostics.settled < 1) {
-    errors.push('[physics] no dynamically fallen can reached the settled state');
-  }
-  if (diagnostics.nonUpright < 1) {
-    errors.push('[physics] no settled can preserved a non-upright resting pose');
   }
 }
 

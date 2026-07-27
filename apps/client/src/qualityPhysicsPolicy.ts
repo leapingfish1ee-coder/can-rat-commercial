@@ -45,16 +45,14 @@ const clamp = (value: number, min: number, max: number): number =>
 function supportHeight(rotation: Quaternion): number {
   const normalized = rotation.clone();
   normalized.normalize();
-  // Vertical component of the cylinder's local Y axis after quaternion rotation.
   const axisY = Math.abs(1 - 2 * (normalized.x * normalized.x + normalized.z * normalized.z));
   const radialContribution = Math.sqrt(Math.max(0, 1 - axisY * axisY)) * CAN_RADIUS;
   return FLOOR_PADDING + axisY * CAN_HALF_HEIGHT + radialContribution;
 }
 
 /**
- * Applies two production-facing corrections without duplicating the scene code:
- * 1. Native-resolution desktop rendering plus FXAA and thinner technical outlines.
- * 2. Orientation-aware can-floor contact that preserves the final physical pose.
+ * Adds native-density rendering, FXAA, restrained technical outlines and
+ * orientation-aware can-floor contact without duplicating the scene builder.
  */
 export function installQualityPhysicsPolicy(app: GameApp): void {
   const runtime = app as unknown as GameRuntime;
@@ -62,8 +60,17 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
   const configureRendering = runtime.configureRendering.bind(runtime);
   runtime.configureRendering = (): void => {
     configureRendering();
+
     const mobileLike = window.innerWidth < 900;
-    runtime.engine?.setHardwareScalingLevel(mobileLike ? 1.08 : 1);
+    const deviceRatio = Math.max(1, window.devicePixelRatio || 1);
+    const targetPixelRatio = mobileLike
+      ? Math.min(deviceRatio, 1.35)
+      : Math.min(deviceRatio, 2);
+
+    // Babylon render size is client size divided by hardwareScalingLevel.
+    // Reciprocal DPR therefore produces a native-density Retina back buffer.
+    runtime.engine?.setHardwareScalingLevel(1 / targetPixelRatio);
+    runtime.engine?.resize(true);
 
     if (runtime.camera && runtime.scene) {
       runtime.qualityFxaa?.dispose();
@@ -111,8 +118,6 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
       const incomingSpeed = Math.abs(can.velocity.y);
       const lowEnergy = incomingSpeed < 0.9 && can.spin.length() < 1.45;
       if (can.bounces >= 5 || (can.bounces >= 2 && lowEnergy)) {
-        // Do not snap to an upright quaternion. Preserve the orientation produced by
-        // gravity, bounce and angular momentum, then place the cylinder on its support hull.
         can.velocity.setAll(0);
         can.spin.setAll(0);
         can.root.position.y = supportHeight(can.root.rotationQuaternion) + 0.002;
@@ -126,7 +131,6 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
       can.velocity.x *= 0.57;
       can.velocity.z *= 0.57;
 
-      // Ground friction converts some translation into a small rolling impulse.
       can.spin.x += can.velocity.z * 0.48;
       can.spin.z -= can.velocity.x * 0.48;
       can.spin.scaleInPlace(can.bounces === 1 ? 0.52 : 0.38);

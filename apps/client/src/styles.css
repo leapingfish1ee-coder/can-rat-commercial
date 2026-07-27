@@ -67,8 +67,8 @@ header {
 #quality-legend .nova { background: #9fb8c5; }
 #quality-legend .orbit { background: #b6a2bd; }
 #company-panel {
-  pointer-events: auto; position: absolute; top: 96px; right: 98px; bottom: 76px;
-  width: min(410px, calc(100vw - 132px)); transform: translateX(24px);
+  pointer-events: auto; position: absolute; top: 102px; right: 94px;
+  width: min(404px, calc(100vw - 128px)); max-height: calc(100vh - 190px); transform: translateX(24px);
   opacity: 0; visibility: hidden; transition: opacity .2s ease, transform .28s cubic-bezier(.2,.8,.2,1);
   padding: 18px; border: 1px solid var(--line); border-radius: 18px;
   background: rgba(239,236,227,.91); backdrop-filter: blur(18px);
@@ -133,7 +133,7 @@ footer {
   #quality-legend { display: none; }
   .floor-nav { right: 11px; }
   .floor-nav button { width: 50px; }
-  #company-panel { top: 90px; right: 72px; bottom: 75px; width: calc(100vw - 88px); }
+  #company-panel { top: 90px; right: 70px; width: calc(100vw - 86px); max-height: calc(100vh - 174px); }
   .hire-grid { grid-template-columns: 1fr 1fr; }
   footer { left: 13px; right: 13px; bottom: 11px; }
   .status { display: none; }

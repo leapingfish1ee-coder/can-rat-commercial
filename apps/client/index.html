@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#ebe9e2" />
+    <title>CAN RAT FIELD / NESTWORKS 3D</title>
+  </head>
+  <body>
+    <canvas id="renderCanvas" aria-label="CAN RAT FIELD 3D game"></canvas>
+    <div id="ui">
+      <header>
+        <div class="identity">
+          <strong>罐鼠场 / CAN RAT FIELD</strong>
+          <span>NESTWORKS COMMERCIAL 3D PROTOTYPE</span>
+        </div>
+        <div class="metric">
+          <span>CASH</span>
+          <b id="cash">¥0</b>
+        </div>
+        <div class="metric">
+          <span>REVENUE</span>
+          <b id="revenue">¥0</b>
+        </div>
+      </header>
+
+      <nav class="floor-nav" aria-label="Floor navigation">
+        <button data-floor="yard" class="active"><i></i>YARD</button>
+        <button data-floor="office"><i></i>FIRM</button>
+      </nav>
+
+      <aside id="quality-legend">
+        <strong>BRAND COLOR</strong>
+        <span><i class="malt"></i>BASE 01</span>
+        <span><i class="fizz"></i>BASE 02</span>
+        <span><i class="nova"></i>BASE 03</span>
+        <span><i class="orbit"></i>BASE 04</span>
+      </aside>
+
+      <section id="company-panel" aria-hidden="true">
+        <div class="panel-head">
+          <div>
+            <span>FLOOR 02</span>
+            <strong>NESTWORKS / 创业公司</strong>
+          </div>
+          <div class="queue">PROCESSING <b id="queue-count">0</b></div>
+        </div>
+
+        <div class="mode-switch">
+          <button data-mode="direct" class="active">
+            <strong>DIRECT SELL</strong>
+            <span>按质量即时结算</span>
+          </button>
+          <button data-mode="process">
+            <strong>PROCESS</strong>
+            <span>延迟加工，提高利润</span>
+          </button>
+        </div>
+
+        <div class="hire-grid">
+          <button data-hire="runner">
+            <span>RUNNER</span><strong>快运鼠</strong>
+            <em>提高场上运输并增加单位</em>
+            <b class="hire-meta" data-meta="runner">×1</b>
+          </button>
+          <button data-hire="hauler">
+            <span>HAULER</span><strong>搬运鼠</strong>
+            <em>较慢，但一次可携带两个罐子</em>
+            <b class="hire-meta" data-meta="hauler">×0</b>
+          </button>
+          <button data-hire="broker">
+            <span>BROKER</span><strong>商务鼠</strong>
+            <em>每只提高 12% 销售收入</em>
+            <b class="hire-meta" data-meta="broker">×0</b>
+          </button>
+          <button data-hire="engineer">
+            <span>ENGINEER</span><strong>加工鼠</strong>
+            <em>每只缩短 18% 加工时间</em>
+            <b class="hire-meta" data-meta="engineer">×0</b>
+          </button>
+        </div>
+      </section>
+
+      <footer>
+        <div class="instruction">
+          <strong id="instruction-key">TAP</strong>
+          <span id="instruction-text">点击罐体中心以获得更垂直的踩压。品牌由罐身配色区分，价值由最终质量决定。</span>
+        </div>
+        <div class="status">
+          <span>RATS <b id="rat-count">1</b></span>
+          <span>CANS <b id="can-count">0</b></span>
+          <span>QUALITY <b id="quality-tier">HIGH</b></span>
+          <span>RENDER <b id="renderer">BOOT</b></span>
+        </div>
+      </footer>
+
+      <div id="toast" role="status"></div>
+      <div id="loading">
+        <div class="loading-mark"></div>
+        <strong>INITIALIZING NESTWORKS</strong>
+        <span>WEBGPU / WEBGL RENDER PIPELINE</span>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

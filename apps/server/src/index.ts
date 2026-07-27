@@ -32,8 +32,11 @@ const brandMultipliers: Record<BrandId, number> = {
 };
 
 const RAT_ARCHIVE_URL = "https://opengameart.org/sites/default/files/rat_godot.zip";
-const TRANSPARENT_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z9t8AAAAASUVORK5CYII=";
-let ratDaeCache: string | undefined;
+interface RatAssetCache {
+  dae: string;
+  png: Uint8Array;
+}
+let ratAssetCache: RatAssetCache | undefined;
 
 function playerIdFrom(headers: Record<string, unknown>): string {
   const raw = headers["x-player-id"];
@@ -46,28 +49,38 @@ function publicState(player: PlayerState): PlayerState {
   return structuredClone(player);
 }
 
-async function fetchRatDae(): Promise<string> {
-  if (ratDaeCache) return ratDaeCache;
+async function fetchRatAsset(): Promise<RatAssetCache> {
+  if (ratAssetCache) return ratAssetCache;
   const response = await fetch(RAT_ARCHIVE_URL, { redirect: "follow" });
   if (!response.ok) throw new Error(`Rat asset archive unavailable (${response.status})`);
   const archive = unzipSync(new Uint8Array(await response.arrayBuffer()));
-  const source = archive["rat.dae"];
-  if (!source) throw new Error("Rat asset archive does not contain rat.dae");
-  const dae = strFromU8(source);
-  ratDaeCache = dae.replace(/<init_from>rat\.png<\/init_from>/g, `<init_from>${TRANSPARENT_PIXEL}</init_from>`);
-  return ratDaeCache;
+  const daeSource = archive["rat.dae"];
+  const pngSource = archive["rat.png"];
+  if (!daeSource || !pngSource) throw new Error("Rat asset archive is missing rat.dae or rat.png");
+  ratAssetCache = { dae: strFromU8(daeSource), png: pngSource };
+  return ratAssetCache;
 }
 
 app.get("/health", async () => ({ ok: true, now: Date.now() }));
 
 app.get("/assets/rat.dae", async (_request: FastifyRequest, reply: FastifyReply) => {
-  const dae = await fetchRatDae();
+  const asset = await fetchRatAsset();
   reply
     .type("model/vnd.collada+xml; charset=utf-8")
     .header("cache-control", "public, max-age=86400, stale-while-revalidate=604800")
     .header("x-asset-license", "CC0-1.0")
     .header("x-asset-source", "OpenGameArt rat-0 by br-n518");
-  return dae;
+  return asset.dae;
+});
+
+app.get("/assets/rat.png", async (_request: FastifyRequest, reply: FastifyReply) => {
+  const asset = await fetchRatAsset();
+  reply
+    .type("image/png")
+    .header("cache-control", "public, max-age=86400, stale-while-revalidate=604800")
+    .header("x-asset-license", "CC0-1.0")
+    .header("x-asset-source", "OpenGameArt rat-0 by br-n518");
+  return Buffer.from(asset.png);
 });
 
 app.get("/api/session", async (request: FastifyRequest) => {

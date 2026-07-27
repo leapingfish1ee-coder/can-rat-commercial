@@ -1,5 +1,6 @@
 import "./styles.css";
 import { GameApp } from "./GameApp";
+import { installQualityPhysicsPolicy } from "./qualityPhysicsPolicy";
 import { installRenderPolicy } from "./renderPolicy";
 import { ui } from "./ui";
 
@@ -9,6 +10,8 @@ if (!(canvas instanceof HTMLCanvasElement)) {
 }
 
 const app = new GameApp(canvas);
+(globalThis as typeof globalThis & { __CAN_RAT_APP__?: GameApp }).__CAN_RAT_APP__ = app;
+installQualityPhysicsPolicy(app);
 installRenderPolicy(app);
 
 ui.onFloor((floor) => app.setFloor(floor));

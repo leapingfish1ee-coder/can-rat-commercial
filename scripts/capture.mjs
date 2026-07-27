@@ -40,20 +40,35 @@ try {
 let diagnostics = {};
 if (ready) {
   const assetResponse = await page.request.get('http://127.0.0.1:5173/assets/rat.dae');
+  const textureResponse = await page.request.get('http://127.0.0.1:5173/assets/rat.png');
   const assetText = assetResponse.ok() ? await assetResponse.text() : '';
+  const textureBytes = textureResponse.ok() ? (await textureResponse.body()).length : 0;
 
   // SwiftShader can render at less than two frames per second at Retina density.
-  // Advance only gameplay physics deterministically, then let the renderer catch up.
+  // Advance gameplay deterministically while also aging transient impact rings.
   await page.evaluate(() => {
     const app = globalThis.__CAN_RAT_APP__;
     if (!app) return;
     for (let index = 0; index < 8; index += 1) app.spawnCan(false);
-    for (let step = 0; step < 900; step += 1) app.updateCans(1 / 60);
+    for (let step = 0; step < 900; step += 1) {
+      app.updateCans(1 / 60);
+      app.updateImpacts(1 / 60);
+    }
     const candidate = app.cans.find(can => can.state === 'settled' && !can.claimedBy);
-    if (candidate) app.stomp(candidate, 0.96);
+    if (candidate) {
+      candidate.root.position.x = 0;
+      candidate.root.position.z = 0;
+      candidate.velocity.setAll(0);
+      candidate.spin.setAll(0);
+      app.stomp(candidate, 0.96);
+    }
   });
 
-  await page.waitForTimeout(1600);
+  // Capture the contact/overshoot phase separately; this verifies that the visual
+  // feedback comes from can deformation rather than a boot or camera shake.
+  await page.waitForTimeout(330);
+  await page.screenshot({ path: 'screenshots/squash.png', fullPage: true });
+  await page.waitForTimeout(1050);
 
   // Allow the asynchronously loaded Collada asset to replace the procedural rat.
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -65,11 +80,17 @@ if (ready) {
   await page.evaluate(() => {
     const app = globalThis.__CAN_RAT_APP__;
     if (!app) return;
-    for (let step = 0; step < 480; step += 1) app.updateCans(1 / 60);
+    for (let step = 0; step < 480; step += 1) {
+      app.updateCans(1 / 60);
+      app.updateImpacts(1 / 60);
+    }
+    // Clear only transient test effects; gameplay entities and physics states remain.
+    for (const impact of [...app.impacts]) impact.mesh.dispose();
+    app.impacts.splice(0);
   });
   await page.waitForTimeout(500);
 
-  diagnostics = await page.evaluate(({ assetStatus, assetLength }) => {
+  diagnostics = await page.evaluate(({ assetStatus, assetLength, textureStatus, textureLength }) => {
     const canvas = document.querySelector('#renderCanvas');
     const app = globalThis.__CAN_RAT_APP__;
     const rect = canvas?.getBoundingClientRect();
@@ -104,6 +125,8 @@ if (ready) {
     return {
       assetStatus,
       assetLength,
+      textureStatus,
+      textureLength,
       pixelRatioX: canvas && rect ? canvas.width / rect.width : 0,
       pixelRatioY: canvas && rect ? canvas.height / rect.height : 0,
       continuous: app?.continuousPhysicsDiagnostics ?? null,
@@ -120,7 +143,12 @@ if (ready) {
       }, {}),
       cans,
     };
-  }, { assetStatus: assetResponse.status(), assetLength: assetText.length });
+  }, {
+    assetStatus: assetResponse.status(),
+    assetLength: assetText.length,
+    textureStatus: textureResponse.status(),
+    textureLength: textureBytes,
+  });
 
   await writeFile('screenshots/render-diagnostics.json', JSON.stringify(diagnostics, null, 2));
   console.log('[diagnostics]', JSON.stringify(diagnostics));
@@ -130,6 +158,9 @@ if (ready) {
   }
   if (diagnostics.assetStatus !== 200 || diagnostics.assetLength < 100000) {
     errors.push(`[asset] CC0 rat endpoint invalid: HTTP ${diagnostics.assetStatus}, ${diagnostics.assetLength} bytes`);
+  }
+  if (diagnostics.textureStatus !== 200 || diagnostics.textureLength < 100000) {
+    errors.push(`[asset] CC0 rat texture invalid: HTTP ${diagnostics.textureStatus}, ${diagnostics.textureLength} bytes`);
   }
   if (!diagnostics.ratAsset?.loaded || diagnostics.ratAsset.attached < 1 || diagnostics.publicRatMeshCount < 1) {
     errors.push(`[asset] public rat model was not attached: ${JSON.stringify(diagnostics.ratAsset)}`);
@@ -146,8 +177,8 @@ if (ready) {
   if (diagnostics.footMeshCount !== 0) {
     errors.push(`[animation] boot meshes remain in the scene: ${diagnostics.footMeshCount}`);
   }
-  if (!diagnostics.crushedCans.some(can => can.scale.y < 0.45 && can.scale.x > 1.25)) {
-    errors.push(`[animation] crushed can deformation is invalid: ${JSON.stringify(diagnostics.crushedCans)}`);
+  if (!diagnostics.crushedCans.some(can => can.scale.y < 0.45 && can.scale.x > 1.25 && can.axisY < 0.95)) {
+    errors.push(`[animation] crushed can free-pose deformation is invalid: ${JSON.stringify(diagnostics.crushedCans)}`);
   }
   if (diagnostics.missingSharedMaterials.length) {
     errors.push(`[resources] shared materials disappeared: ${diagnostics.missingSharedMaterials.join(', ')}`);

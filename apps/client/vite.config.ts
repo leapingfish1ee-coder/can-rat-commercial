@@ -12,12 +12,16 @@ export default defineConfig({
       "/health": {
         target: "http://localhost:8787",
         changeOrigin: true
+      },
+      "/assets": {
+        target: "http://localhost:8787",
+        changeOrigin: true
       }
     }
   },
   build: {
     target: "es2022",
     sourcemap: true,
-    chunkSizeWarningLimit: 1200
+    chunkSizeWarningLimit: 1600
   }
 });

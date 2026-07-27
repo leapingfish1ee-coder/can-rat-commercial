@@ -39,7 +39,17 @@ try {
 
 let diagnostics = {};
 if (ready) {
-  await page.waitForTimeout(12000);
+  // SwiftShader at 2× DPR can run below 2 FPS. Step only the can rigid-body
+  // simulation at a deterministic 60 Hz so physics verification is independent
+  // of rendering throughput and the game's defensive real-frame dt clamp.
+  await page.evaluate(() => {
+    const app = globalThis.__CAN_RAT_APP__;
+    if (!app) return;
+    for (let index = 0; index < 5; index += 1) app.spawnCan(false);
+    for (let step = 0; step < 720; step += 1) app.updateCans(1 / 60);
+  });
+  await page.waitForTimeout(500);
+
   diagnostics = await page.evaluate(() => {
     const canvas = document.querySelector('#renderCanvas');
     const app = globalThis.__CAN_RAT_APP__;
@@ -52,8 +62,6 @@ if (ready) {
         state: can.state,
         bounces: can.bounces,
         y: Number(can.root.position.y.toFixed(3)),
-        vy: Number(can.velocity.y.toFixed(3)),
-        spin: Number(can.spin.length().toFixed(3)),
         axisY: Number(axisY.toFixed(4)),
       };
     });
@@ -65,8 +73,7 @@ if (ready) {
         acc[can.state] = (acc[can.state] ?? 0) + 1;
         return acc;
       }, {}),
-      maxBouncesLive: cans.reduce((max, can) => Math.max(max, can.bounces), 0),
-      nonUprightImpactedLive: cans.filter(can => can.bounces > 0 && can.axisY < 0.9).length,
+      nonUprightSettledLive: cans.filter(can => can.state === 'settled' && can.bounces > 0 && can.axisY < 0.9).length,
       cans,
     };
   });
@@ -76,6 +83,12 @@ if (ready) {
 
   if (diagnostics.pixelRatioX < 1.8 || diagnostics.pixelRatioY < 1.8) {
     errors.push(`[quality] expected Retina-scale canvas, got ${diagnostics.pixelRatioX.toFixed(2)} × ${diagnostics.pixelRatioY.toFixed(2)}`);
+  }
+  if ((diagnostics.physics?.settled ?? 0) < 1) {
+    errors.push('[physics] deterministic stepping produced no settled cans');
+  }
+  if ((diagnostics.physics?.nonUpright ?? 0) < 1 || diagnostics.nonUprightSettledLive < 1) {
+    errors.push('[physics] settled cans did not preserve non-upright resting poses');
   }
 }
 

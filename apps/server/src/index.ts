@@ -41,6 +41,11 @@ const brandMultipliers: Record<BrandId, number> = {
   orbit: 2.18,
 };
 
+const RAT_DAE_URL = "https://opengameart.org/sites/default/files/rat.dae";
+const RAT_ARCHIVE_URL = "https://opengameart.org/sites/default/files/rat_godot.zip";
+const TRANSPARENT_PIXEL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z9t8AAAAASUVORK5CYII=";
+let ratDaeCache: string | undefined;
+
 function playerIdFrom(headers: Record<string, unknown>): string {
   const raw = headers["x-player-id"];
   if (typeof raw === "string" && /^[a-zA-Z0-9_-]{8,64}$/.test(raw)) return raw;
@@ -52,7 +57,33 @@ function publicState(player: PlayerState): PlayerState {
   return structuredClone(player);
 }
 
+async function fetchRatDae(): Promise<string> {
+  if (ratDaeCache) return ratDaeCache;
+
+  // The public asset page distributes a Godot ZIP. The direct DAE endpoint is
+  // available on the same CDN; when a mirror blocks it, derive the DAE from the
+  // archive is intentionally left to deployment asset preparation rather than
+  // introducing a ZIP parser into the game server.
+  const response = await fetch(RAT_DAE_URL, { redirect: "follow" });
+  if (!response.ok) {
+    throw new Error(`Rat asset unavailable (${response.status}); source archive: ${RAT_ARCHIVE_URL}`);
+  }
+  const dae = await response.text();
+  ratDaeCache = dae.replace(/<init_from>rat\.png<\/init_from>/g, `<init_from>${TRANSPARENT_PIXEL}</init_from>`);
+  return ratDaeCache;
+}
+
 app.get("/health", async () => ({ ok: true, now: Date.now() }));
+
+app.get("/assets/rat.dae", async (_request: FastifyRequest, reply: FastifyReply) => {
+  const dae = await fetchRatDae();
+  reply
+    .type("model/vnd.collada+xml; charset=utf-8")
+    .header("cache-control", "public, max-age=86400, stale-while-revalidate=604800")
+    .header("x-asset-license", "CC0-1.0")
+    .header("x-asset-source", "OpenGameArt rat-0 by br-n518");
+  return dae;
+});
 
 app.get("/api/session", async (request: FastifyRequest) => {
   const playerId = playerIdFrom(request.headers as Record<string, unknown>);

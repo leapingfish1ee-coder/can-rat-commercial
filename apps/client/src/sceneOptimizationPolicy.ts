@@ -1,4 +1,5 @@
 import {
+  Camera,
   PBRMaterial,
   Scene,
   ScenePerformancePriority,
@@ -8,7 +9,7 @@ import type { GameApp } from "./GameApp";
 
 interface GameRuntime {
   scene?: Scene;
-  camera?: Parameters<typeof SharpenPostProcess>[2];
+  camera?: Camera;
   configureRendering: () => void;
   createWorld: () => void;
   sceneSharpen?: SharpenPostProcess;
@@ -35,20 +36,13 @@ export function installSceneOptimizationPolicy(app: GameApp): void {
 
     if (runtime.camera) {
       runtime.sceneSharpen?.dispose();
-      runtime.sceneSharpen = new SharpenPostProcess(
-        "scene-sharpen",
-        1,
-        runtime.camera,
-      );
+      runtime.sceneSharpen = new SharpenPostProcess("scene-sharpen", 1, runtime.camera);
       runtime.sceneSharpen.edgeAmount = 0.17;
       runtime.sceneSharpen.colorAmount = 1.01;
     }
 
     for (const material of scene.materials) {
-      if (material instanceof PBRMaterial) {
-        material.environmentIntensity = 0.72;
-        material.realTimeFiltering = false;
-      }
+      if (material instanceof PBRMaterial) material.environmentIntensity = 0.72;
     }
   };
 

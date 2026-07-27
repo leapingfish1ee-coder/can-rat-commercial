@@ -22,8 +22,11 @@ interface RuntimeCan {
 }
 
 interface PhysicsDiagnostics {
+  frames: number;
+  collisions: number;
   settled: number;
   nonUpright: number;
+  maxBounces: number;
   axisYSamples: number[];
 }
 
@@ -61,15 +64,14 @@ function supportHeight(rotation: Quaternion): number {
   return FLOOR_PADDING + axisY * CAN_HALF_HEIGHT + radialContribution;
 }
 
-/**
- * Adds native-density rendering, FXAA, restrained technical outlines and
- * orientation-aware can-floor contact without duplicating the scene builder.
- */
 export function installQualityPhysicsPolicy(app: GameApp): void {
   const runtime = app as unknown as GameRuntime;
   runtime.qualityPhysicsDiagnostics = {
+    frames: 0,
+    collisions: 0,
     settled: 0,
     nonUpright: 0,
+    maxBounces: 0,
     axisYSamples: [],
   };
 
@@ -105,6 +107,9 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
   };
 
   runtime.updateCans = (dt: number): void => {
+    const diagnostics = runtime.qualityPhysicsDiagnostics;
+    if (diagnostics) diagnostics.frames += 1;
+
     for (const can of runtime.cans) {
       if (can.state !== "falling") continue;
 
@@ -127,11 +132,17 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
 
       can.root.position.y = contactY;
       can.bounces += 1;
+      if (diagnostics) {
+        diagnostics.collisions += 1;
+        diagnostics.maxBounces = Math.max(diagnostics.maxBounces, can.bounces);
+      }
       runtime.createImpact(can.root.position, can.bounces === 1 ? 0.82 : 0.42);
 
       const incomingSpeed = Math.abs(can.velocity.y);
-      const lowEnergy = incomingSpeed < 0.9 && can.spin.length() < 1.45;
-      if (can.bounces >= 5 || (can.bounces >= 2 && lowEnergy)) {
+      const lowEnergy = incomingSpeed < 0.72 && can.spin.length() < 1.2;
+      if (can.bounces >= 2 || lowEnergy) {
+        // Two contacts are enough for this lightweight arcade rigid-body model:
+        // retain the physically accumulated orientation and end micro-bouncing cleanly.
         can.velocity.setAll(0);
         can.spin.setAll(0);
         can.root.position.y = supportHeight(can.root.rotationQuaternion) + 0.002;
@@ -139,7 +150,6 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
         can.settledAt = performance.now();
 
         const axisY = verticalAxisMagnitude(can.root.rotationQuaternion);
-        const diagnostics = runtime.qualityPhysicsDiagnostics;
         if (diagnostics) {
           diagnostics.settled += 1;
           if (axisY < 0.9) diagnostics.nonUpright += 1;
@@ -149,14 +159,12 @@ export function installQualityPhysicsPolicy(app: GameApp): void {
         continue;
       }
 
-      const restitution = can.bounces === 1 ? 0.31 : 0.18;
-      can.velocity.y = incomingSpeed * restitution;
-      can.velocity.x *= 0.57;
-      can.velocity.z *= 0.57;
-
-      can.spin.x += can.velocity.z * 0.48;
-      can.spin.z -= can.velocity.x * 0.48;
-      can.spin.scaleInPlace(can.bounces === 1 ? 0.52 : 0.38);
+      can.velocity.y = incomingSpeed * 0.26;
+      can.velocity.x *= 0.55;
+      can.velocity.z *= 0.55;
+      can.spin.x += can.velocity.z * 0.42;
+      can.spin.z -= can.velocity.x * 0.42;
+      can.spin.scaleInPlace(0.48);
     }
   };
 }

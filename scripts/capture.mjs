@@ -37,56 +37,48 @@ try {
   errors.push('[capture] #loading.hidden was not reached within 25 seconds');
 }
 
-const observed = {
+let diagnostics = {
   pixelRatioX: 0,
   pixelRatioY: 0,
-  maxSettledDynamicCount: 0,
-  maxNonUprightCount: 0,
-  samples: [],
+  settled: 0,
+  nonUpright: 0,
+  axisYSamples: [],
 };
 
 if (ready) {
-  for (let index = 0; index < 48; index += 1) {
-    const sample = await page.evaluate(() => {
+  for (let index = 0; index < 56; index += 1) {
+    diagnostics = await page.evaluate(() => {
       const canvas = document.querySelector('#renderCanvas');
       const app = globalThis.__CAN_RAT_APP__;
       const rect = canvas?.getBoundingClientRect();
-      const settledDynamic = (app?.cans ?? []).filter(can => can.state === 'settled' && can.bounces > 0);
-      const poses = settledDynamic.map(can => {
-        const q = can.root.rotationQuaternion;
-        if (!q) return { axisY: 1, bounces: can.bounces };
-        const axisY = Math.abs(1 - 2 * (q.x * q.x + q.z * q.z));
-        return { axisY, bounces: can.bounces };
-      });
+      const physics = app?.qualityPhysicsDiagnostics ?? {
+        settled: 0,
+        nonUpright: 0,
+        axisYSamples: [],
+      };
       return {
         pixelRatioX: canvas && rect ? canvas.width / rect.width : 0,
         pixelRatioY: canvas && rect ? canvas.height / rect.height : 0,
-        settledDynamicCount: settledDynamic.length,
-        nonUprightCount: poses.filter(pose => pose.axisY < 0.9).length,
-        poses,
+        settled: physics.settled,
+        nonUpright: physics.nonUpright,
+        axisYSamples: physics.axisYSamples,
       };
     });
-
-    observed.pixelRatioX = sample.pixelRatioX;
-    observed.pixelRatioY = sample.pixelRatioY;
-    observed.maxSettledDynamicCount = Math.max(observed.maxSettledDynamicCount, sample.settledDynamicCount);
-    observed.maxNonUprightCount = Math.max(observed.maxNonUprightCount, sample.nonUprightCount);
-    if (sample.settledDynamicCount > 0) observed.samples.push(sample);
-    if (observed.maxNonUprightCount > 0 && index > 8) break;
+    if (diagnostics.nonUpright > 0 && index > 8) break;
     await page.waitForTimeout(250);
   }
 
-  await writeFile('screenshots/render-diagnostics.json', JSON.stringify(observed, null, 2));
-  console.log('[diagnostics]', JSON.stringify(observed));
+  await writeFile('screenshots/render-diagnostics.json', JSON.stringify(diagnostics, null, 2));
+  console.log('[diagnostics]', JSON.stringify(diagnostics));
 
-  if (observed.pixelRatioX < 1.8 || observed.pixelRatioY < 1.8) {
-    errors.push(`[quality] expected Retina-scale canvas, got ${observed.pixelRatioX.toFixed(2)} × ${observed.pixelRatioY.toFixed(2)}`);
+  if (diagnostics.pixelRatioX < 1.8 || diagnostics.pixelRatioY < 1.8) {
+    errors.push(`[quality] expected Retina-scale canvas, got ${diagnostics.pixelRatioX.toFixed(2)} × ${diagnostics.pixelRatioY.toFixed(2)}`);
   }
-  if (observed.maxSettledDynamicCount < 1) {
-    errors.push('[physics] no dynamically fallen can reached the settled state during polling');
+  if (diagnostics.settled < 1) {
+    errors.push('[physics] no dynamically fallen can reached the settled state');
   }
-  if (observed.maxNonUprightCount < 1) {
-    errors.push('[physics] no dynamically fallen can preserved a non-upright resting pose');
+  if (diagnostics.nonUpright < 1) {
+    errors.push('[physics] no settled can preserved a non-upright resting pose');
   }
 }
 

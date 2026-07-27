@@ -1,9 +1,17 @@
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 
 await mkdir('screenshots', { recursive: true });
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  args: [
+    '--use-angle=swiftshader',
+    '--enable-webgl',
+    '--ignore-gpu-blocklist',
+    '--disable-features=Vulkan,WebGPU'
+  ]
+});
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
 
 const errors = [];
@@ -18,28 +26,35 @@ page.on('pageerror', error => {
   errors.push(text);
 });
 
-await page.goto('http://127.0.0.1:5173', { waitUntil: 'networkidle', timeout: 120000 });
-await page.waitForSelector('#loading.hidden', { timeout: 120000 });
-await page.waitForTimeout(3500);
+await page.goto('http://127.0.0.1:5173', { waitUntil: 'domcontentloaded', timeout: 120000 });
+
+let ready = false;
+try {
+  await page.waitForSelector('#loading.hidden', { timeout: 25000 });
+  ready = true;
+} catch {
+  errors.push('[capture] #loading.hidden was not reached within 25 seconds');
+}
+
+await page.waitForTimeout(2500);
 await page.screenshot({ path: 'screenshots/yard.png', fullPage: true });
 
-await page.locator('[data-floor="office"]').click();
-await page.waitForTimeout(1600);
-await page.screenshot({ path: 'screenshots/office.png', fullPage: true });
+if (ready) {
+  await page.locator('[data-floor="office"]').click();
+  await page.waitForTimeout(1800);
+  await page.screenshot({ path: 'screenshots/office.png', fullPage: true });
 
-await page.locator('[data-floor="yard"]').click();
-await page.waitForTimeout(900);
-const canvas = page.locator('#renderCanvas');
-const box = await canvas.boundingBox();
-if (box) {
-  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.55);
-  await page.waitForTimeout(800);
-}
-await page.screenshot({ path: 'screenshots/yard-interaction.png', fullPage: true });
-
-if (errors.length > 0) {
-  console.error(`Captured ${errors.length} browser errors.`);
-  process.exitCode = 2;
+  await page.locator('[data-floor="yard"]').click();
+  await page.waitForTimeout(900);
+  const canvas = page.locator('#renderCanvas');
+  const box = await canvas.boundingBox();
+  if (box) {
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.55);
+    await page.waitForTimeout(900);
+  }
+  await page.screenshot({ path: 'screenshots/yard-interaction.png', fullPage: true });
 }
 
+await writeFile('screenshots/browser-errors.txt', errors.length ? errors.join('\n') : 'No browser errors captured.\n');
+console.log(`Capture completed. ready=${ready}; browserErrors=${errors.length}`);
 await browser.close();

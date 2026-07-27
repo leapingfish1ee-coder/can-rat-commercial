@@ -23,8 +23,8 @@ export interface RatConfig {
 }
 
 export const RAT_CONFIG: Record<"runner" | "hauler", RatConfig> = {
-  runner: { type: "runner", speed: 2.3, capacity: 1, bodyHex: "#d8d4ca" },
-  hauler: { type: "hauler", speed: 1.72, capacity: 2, bodyHex: "#b9b5aa" },
+  runner: { type: "runner", speed: 2.3, capacity: 1, bodyHex: "#bdb8ad" },
+  hauler: { type: "hauler", speed: 1.72, capacity: 2, bodyHex: "#9f9a90" },
 };
 
 export function weightedBrand(): BrandVisual {

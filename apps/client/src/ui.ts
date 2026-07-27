@@ -14,6 +14,7 @@ const canCount = byId<HTMLElement>("can-count");
 const qualityTier = byId<HTMLElement>("quality-tier");
 const renderer = byId<HTMLElement>("renderer");
 const panel = byId<HTMLElement>("company-panel");
+const uiRoot = byId<HTMLElement>("ui");
 const qualityLegend = byId<HTMLElement>("quality-legend");
 const instructionKey = byId<HTMLElement>("instruction-key");
 const instructionText = byId<HTMLElement>("instruction-text");
@@ -45,6 +46,7 @@ export const ui = {
 
   setFloor(floor: "yard" | "office"): void {
     const office = floor === "office";
+    uiRoot.dataset.floor = floor;
     panel.classList.toggle("visible", office);
     panel.setAttribute("aria-hidden", String(!office));
     qualityLegend.style.opacity = office ? "0" : "1";

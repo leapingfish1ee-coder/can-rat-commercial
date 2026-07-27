@@ -1,0 +1,25 @@
+{
+  "name": "can-rat-commercial",
+  "private": true,
+  "version": "0.2.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "predev": "npm run build -w @can-rat/shared",
+    "dev": "concurrently -n SERVER,CLIENT -c auto \"npm run dev -w @can-rat/server\" \"npm run dev -w @can-rat/client\"",
+    "build": "npm run build -w @can-rat/shared && npm run build -w @can-rat/server && npm run build -w @can-rat/client",
+    "start": "npm run start -w @can-rat/server",
+    "typecheck": "npm run typecheck -w @can-rat/shared && npm run typecheck -w @can-rat/server && npm run typecheck -w @can-rat/client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "npm@11.11.0",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  }
+}

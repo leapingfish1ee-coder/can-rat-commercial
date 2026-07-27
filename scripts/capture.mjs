@@ -12,7 +12,7 @@ const browser = await chromium.launch({
     '--disable-features=Vulkan,WebGPU'
   ]
 });
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 2 });
 
 const errors = [];
 page.on('console', message => {
@@ -36,7 +36,43 @@ try {
   errors.push('[capture] #loading.hidden was not reached within 25 seconds');
 }
 
-await page.waitForTimeout(2500);
+await page.waitForTimeout(7000);
+
+if (ready) {
+  const diagnostics = await page.evaluate(() => {
+    const canvas = document.querySelector('#renderCanvas');
+    const app = globalThis.__CAN_RAT_APP__;
+    const rect = canvas?.getBoundingClientRect();
+    const settledDynamic = (app?.cans ?? []).filter(can => can.state === 'settled' && can.bounces > 0);
+    const poses = settledDynamic.map(can => {
+      const q = can.root.rotationQuaternion;
+      if (!q) return { axisY: 1, bounces: can.bounces };
+      const axisY = Math.abs(1 - 2 * (q.x * q.x + q.z * q.z));
+      return { axisY, bounces: can.bounces };
+    });
+    return {
+      pixelRatioX: canvas && rect ? canvas.width / rect.width : 0,
+      pixelRatioY: canvas && rect ? canvas.height / rect.height : 0,
+      settledDynamicCount: settledDynamic.length,
+      nonUprightCount: poses.filter(pose => pose.axisY < 0.9).length,
+      poses,
+    };
+  });
+
+  await writeFile('screenshots/render-diagnostics.json', JSON.stringify(diagnostics, null, 2));
+  console.log('[diagnostics]', JSON.stringify(diagnostics));
+
+  if (diagnostics.pixelRatioX < 1.8 || diagnostics.pixelRatioY < 1.8) {
+    errors.push(`[quality] expected Retina-scale canvas, got ${diagnostics.pixelRatioX.toFixed(2)} × ${diagnostics.pixelRatioY.toFixed(2)}`);
+  }
+  if (diagnostics.settledDynamicCount < 1) {
+    errors.push('[physics] no dynamically fallen can reached the settled state');
+  }
+  if (diagnostics.nonUprightCount < 1) {
+    errors.push('[physics] all dynamically fallen cans were upright; natural settling regression suspected');
+  }
+}
+
 await page.screenshot({ path: 'screenshots/yard.png', fullPage: true });
 
 if (ready) {
@@ -58,3 +94,4 @@ if (ready) {
 await writeFile('screenshots/browser-errors.txt', errors.length ? errors.join('\n') : 'No browser errors captured.\n');
 console.log(`Capture completed. ready=${ready}; browserErrors=${errors.length}`);
 await browser.close();
+if (errors.length) process.exitCode = 2;

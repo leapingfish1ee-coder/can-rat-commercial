@@ -9,7 +9,8 @@
   "scripts": {
     "predev": "npm run build -w @can-rat/shared",
     "dev": "concurrently -n SERVER,CLIENT -c auto \"npm run dev -w @can-rat/server\" \"npm run dev -w @can-rat/client\"",
-    "build": "npm run build -w @can-rat/shared && npm run build -w @can-rat/server && npm run build -w @can-rat/client",
+    "build": "node scripts/build-with-log.mjs",
+    "build:workspaces": "npm run build -w @can-rat/shared && npm run build -w @can-rat/server && npm run build -w @can-rat/client",
     "start": "npm run start -w @can-rat/server",
     "typecheck": "npm run typecheck -w @can-rat/shared && npm run typecheck -w @can-rat/server && npm run typecheck -w @can-rat/client"
   },
